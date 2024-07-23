@@ -2,31 +2,32 @@ import requests
 import re
 import csv
 import io
+from db import MarketData, SessionLocal
 
 url = 'https://cloud.mail.ru/public/L1xB/nvgHGYJz5'
 
 
 def get_direct_link_from_mail_cloud_url(link):
-    response = requests.get(link)
-    page_content = response.text
+    try:
+        response = requests.get(link)
+        response.raise_for_status()  # Проверка на успешный запрос (200 OK)
+        page_content = response.text
 
-    re_pattern = r'dispatcher.*?weblink_get.*?url":"(.*?)"'
-    match = re.search(re_pattern, page_content)
+        re_pattern = r'dispatcher.*?weblink_get.*?url":"(.*?)"'
+        match = re.search(re_pattern, page_content)
 
-    if match:
-        url = match.group(1)
-        parts = link.split('/')[-2:]
-        url = f'{url}/{parts[0]}/{parts[1]}'
-        return url
+        if match:
+            url = match.group(1)
+            parts = link.split('/')[-2:]
+            url = f'{url}/{parts[0]}/{parts[1]}'
+            return url
+    except requests.RequestException as e:
+        print(f"Ошибка при запросе ссылки: {e}")
 
     return None
 
 
-direct_link = get_direct_link_from_mail_cloud_url(url)
-print(f"Ссылка для скачивания: {direct_link}")
-
-
-def fetch_and_save_csv(direct_link):
+def import_csv_to_db(direct_link):
     if not direct_link:
         print("Недоступная ссылка")
         return
@@ -44,17 +45,41 @@ def fetch_and_save_csv(direct_link):
         # Читаем CSV данные
         csv_reader = csv.reader(csv_file, delimiter=';')
 
-        with open('C:\MyFiles\Projects\SimbirSoft\src\output.csv', 'w', newline='', encoding='utf-8') as f:
-            csv_writer = csv.writer(f, delimiter=',')  # Используем ',' для CSV
-            for row in csv_reader:
-                csv_writer.writerow(row)
-
+        session = SessionLocal()
+        flag = True
+        for row in csv_reader:
+            if flag:
+                flag = False
+                continue
+            try:
+                data = MarketData(
+                    ticker=row[0],
+                    period=row[1],
+                    date=row[2],
+                    time=row[3],
+                    open=float(row[4]),
+                    high=float(row[5]),
+                    low=float(row[6]),
+                    close=float(row[7]),
+                    volume=int(row[8])
+                )
+                session.add(data)
+                session.commit()
+            except Exception as e:
+                print(f"Ошибка при обработке строки: {e}")
+                session.rollback()
+                continue
         print("CSV файл успешно записан.")
 
     except requests.RequestException as e:
-        print(f"Ошибка при запросе: {e}")
+        print(f"Ошибка при запросе CSV файла: {e}")
     except IOError as e:
-        print(f"Ошибка при записи файла: {e}")
+        print(f"Ошибка при обработке CSV файла: {e}")
+    finally:
+        session.close()
 
 
-fetch_and_save_csv(direct_link)
+direct_link = get_direct_link_from_mail_cloud_url(url)
+print(f"Ссылка для скачивания: {direct_link}")
+
+import_csv_to_db(direct_link)
