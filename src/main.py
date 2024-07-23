@@ -3,6 +3,15 @@ import re
 import csv
 import io
 from db import MarketData, SessionLocal
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO,  # Уровень логирования (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+                    format='%(asctime)s - %(levelname)s - %(message)s',  # Формат сообщений
+                    handlers=[
+                        logging.FileHandler('app.log'),  # Запись логов в файл
+                        logging.StreamHandler()  # Вывод логов на консоль
+                    ])
 
 url = 'https://cloud.mail.ru/public/L1xB/nvgHGYJz5'
 
@@ -22,14 +31,14 @@ def get_direct_link_from_mail_cloud_url(link):
             url = f'{url}/{parts[0]}/{parts[1]}'
             return url
     except requests.RequestException as e:
-        print(f"Ошибка при запросе ссылки: {e}")
+        logging.error(f"Ошибка при запросе ссылки: {e}")
 
     return None
 
 
 def import_csv_to_db(direct_link):
     if not direct_link:
-        print("Недоступная ссылка")
+        logging.error("Недоступная ссылка")
         return
 
     try:
@@ -66,20 +75,21 @@ def import_csv_to_db(direct_link):
                 session.add(data)
                 session.commit()
             except Exception as e:
-                print(f"Ошибка при обработке строки: {e}")
+                logging.error(f"Ошибка при обработке строки: {e}")
                 session.rollback()
                 continue
-        print("CSV файл успешно записан.")
+        logging.info("CSV файл успешно записан.")
 
     except requests.RequestException as e:
-        print(f"Ошибка при запросе CSV файла: {e}")
+        logging.error(f"Ошибка при запросе CSV файла: {e}")
     except IOError as e:
-        print(f"Ошибка при обработке CSV файла: {e}")
+        logging.error(f"Ошибка при обработке CSV файла: {e}")
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 direct_link = get_direct_link_from_mail_cloud_url(url)
-print(f"Ссылка для скачивания: {direct_link}")
+logging.info(f"Ссылка для скачивания: {direct_link}")
 
 import_csv_to_db(direct_link)
